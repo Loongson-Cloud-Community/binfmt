@@ -1,0 +1,164 @@
+From 13d1098ac04a90ed183877133a30b791bd00b56d Mon Sep 17 00:00:00 2001
+From: jiangxin <jiangxin@hygon.cn>
+Date: Wed, 25 Aug 2021 09:59:16 +0800
+Subject: [PATCH 4/9] anolis: csv/i386: add command to load data to guest
+ memory
+
+The KVM_CSV_LAUNCH_ENCRYPT_DATA command is used to load data to an
+encrypted guest memory in an isolated memory region that guest owns.
+
+Signed-off-by: Xin Jiang <jiangxin@hygon.cn>
+Change-Id: Ibebef9ad29a411d93936b373b3b2e874e56e40f4
+---
+ linux-headers/linux/kvm.h     |  7 ++++
+ target/i386/csv-sysemu-stub.c |  5 +++
+ target/i386/csv.c             | 69 +++++++++++++++++++++++++++++++++++
+ target/i386/csv.h             |  2 +
+ target/i386/trace-events      |  3 ++
+ 5 files changed, 86 insertions(+)
+
+diff --git a/linux-headers/linux/kvm.h b/linux-headers/linux/kvm.h
+index a67173cef0..456aed121f 100644
+--- a/linux-headers/linux/kvm.h
++++ b/linux-headers/linux/kvm.h
+@@ -1988,6 +1988,13 @@ enum csv_cmd_id {
+ 	KVM_CSV_NR_MIN = 0xc0,
+ 
+ 	KVM_CSV_INIT = KVM_CSV_NR_MIN,
++	KVM_CSV_LAUNCH_ENCRYPT_DATA,
++};
++
++struct kvm_csv_launch_encrypt_data {
++	__u64 gpa;
++	__u64 uaddr;
++	__u32 len;
+ };
+ 
+ struct kvm_csv_init_data {
+diff --git a/target/i386/csv-sysemu-stub.c b/target/i386/csv-sysemu-stub.c
+index dbd710dc6f..236a6909d2 100644
+--- a/target/i386/csv-sysemu-stub.c
++++ b/target/i386/csv-sysemu-stub.c
+@@ -19,3 +19,8 @@ int csv_init(uint32_t policy, int fd, void *state, struct sev_ops *ops)
+ {
+     return 0;
+ }
++
++int csv_load_data(uint64_t gpa, uint8_t *ptr, uint64_t len, Error **errp)
++{
++    g_assert_not_reached();
++}
+diff --git a/target/i386/csv.c b/target/i386/csv.c
+index c11f59f30c..3b3dff5174 100644
+--- a/target/i386/csv.c
++++ b/target/i386/csv.c
+@@ -14,11 +14,13 @@
+ #include "qemu/osdep.h"
+ 
+ #include <linux/kvm.h>
++#include "qapi/error.h"
+ 
+ #ifdef CONFIG_NUMA
+ #include <numaif.h>
+ #endif
+ 
++#include "trace.h"
+ #include "cpu.h"
+ #include "sev.h"
+ #include "csv.h"
+@@ -93,3 +95,70 @@ csv_enabled(void)
+ 
+     return sev_es_enabled() && (csv_guest.policy & GUEST_POLICY_CSV_BIT);
+ }
++
++static bool
++csv_check_state(SevState state)
++{
++    return *((SevState *)csv_guest.state) == state ? true : false;
++}
++
++static int
++csv_ioctl(int cmd, void *data, int *error)
++{
++    if (csv_guest.sev_ioctl)
++        return csv_guest.sev_ioctl(csv_guest.sev_fd, cmd, data, error);
++    else
++        return -1;
++}
++
++static const char *
++fw_error_to_str(int code)
++{
++    if (csv_guest.fw_error_to_str)
++        return csv_guest.fw_error_to_str(code);
++    else
++        return NULL;
++}
++
++static int
++csv_launch_encrypt_data(uint64_t gpa, uint8_t *addr, uint64_t len)
++{
++    int ret, fw_error;
++    struct kvm_csv_launch_encrypt_data update;
++
++    if (!addr || !len) {
++        return 1;
++    }
++
++    update.gpa = (__u64)gpa;
++    update.uaddr = (__u64)(unsigned long)addr;
++    update.len = len;
++    trace_kvm_csv_launch_encrypt_data(gpa, addr, len);
++    ret = csv_ioctl(KVM_CSV_LAUNCH_ENCRYPT_DATA, &update, &fw_error);
++    if (ret) {
++        error_report("%s: CSV LAUNCH_ENCRYPT_DATA ret=%d fw_error=%d '%s'",
++                __func__, ret, fw_error, fw_error_to_str(fw_error));
++    }
++
++    return ret;
++}
++
++int
++csv_load_data(uint64_t gpa, uint8_t *ptr, uint64_t len, Error **errp)
++{
++    int ret = 0;
++
++    if (!csv_enabled()) {
++        error_setg(errp, "%s: CSV is not enabled", __func__);
++        return -1;
++    }
++
++    /* if CSV is in update state then load the data to secure memory */
++    if (csv_check_state(SEV_STATE_LAUNCH_UPDATE)) {
++        ret = csv_launch_encrypt_data(gpa, ptr, len);
++        if (ret)
++            error_setg(errp, "%s: CSV fail to encrypt data", __func__);
++    }
++
++    return ret;
++}
+diff --git a/target/i386/csv.h b/target/i386/csv.h
+index 886dbb2613..6f7b112d96 100644
+--- a/target/i386/csv.h
++++ b/target/i386/csv.h
+@@ -35,4 +35,6 @@ typedef struct CsvGuestState CsvGuestState;
+ extern struct CsvGuestState csv_guest;
+ extern int csv_init(uint32_t policy, int fd, void *state, struct sev_ops *ops);
+ 
++int csv_load_data(uint64_t gpa, uint8_t *ptr, uint64_t len, Error **errp);
++
+ #endif
+diff --git a/target/i386/trace-events b/target/i386/trace-events
+index 2cd8726eeb..b7da9bd748 100644
+--- a/target/i386/trace-events
++++ b/target/i386/trace-events
+@@ -11,3 +11,6 @@ kvm_sev_launch_measurement(const char *value) "data %s"
+ kvm_sev_launch_finish(void) ""
+ kvm_sev_launch_secret(uint64_t hpa, uint64_t hva, uint64_t secret, int len) "hpa 0x%" PRIx64 " hva 0x%" PRIx64 " data 0x%" PRIx64 " len %d"
+ kvm_sev_attestation_report(const char *mnonce, const char *data) "mnonce %s data %s"
++
++# csv.c
++kvm_csv_launch_encrypt_data(uint64_t gpa, void *addr, uint64_t len) "gpa 0x%" PRIx64 "addr %p len 0x%" PRIu64
+-- 
+2.17.1
+

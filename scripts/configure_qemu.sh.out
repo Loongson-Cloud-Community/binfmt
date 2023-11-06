@@ -34,6 +34,12 @@ if [ -z "$QEMU_TARGETS" ]; then
   if [ "$arch" != "mips64" ] ; then
     QEMU_TARGETS="$QEMU_TARGETS mips64-linux-user"
   fi
+  if [ "$arch" != "loongarch64" ] ; then
+    QEMU_TARGETS="$QEMU_TARGETS loongarch64-linux-user"
+  fi
+  if [ "$arch" != "loong64" ] ; then
+    QEMU_TARGETS="$QEMU_TARGETS loongarch64-linux-user"
+  fi
 fi
 
 set -x
@@ -67,10 +73,15 @@ set -x
   --disable-werror \
   --disable-debug-info \
   --disable-glusterfs \
-  --cross-prefix=$(xx-info)- \
-  --host-cc=$(xx-clang --print-target-triple)-clang \
-  --host=$(xx-clang --print-target-triple) \
-  --build=$(TARGETPLATFORM= TARGETPAIR= xx-clang --print-target-triple) \
-  --cc=$(xx-clang --print-target-triple)-clang \
-  --extra-ldflags=-latomic \
-  --target-list="$QEMU_TARGETS"
+  #--cross-prefix=loongarch64-unknown-linux-gnu- \
+  #--cross-prefix=$(xx-info)- \
+  #--host-cc=CC \
+  #--host-cc=$(xx-clang --print-target-triple)clang \
+  #--host=loongarch64 \
+  #--host=$(xx-clang --print-target-triple) \
+  #--build=$(loongarch64-linux-gnu) \
+  #--build=$(TARGETPLATFORM= TARGETPAIR= xx-clang --print-target-triple) \
+  #--cc=/usr/bin/clang \
+  #--cc=$(xx-clang --print-target-triple)clang \
+  #--extra-ldflags=-latomic \
+  #--target-list="$QEMU_TARGETS"
