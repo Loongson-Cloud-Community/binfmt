@@ -3,10 +3,10 @@ ARG ALPINE_VERSION=3.18
 ARG XX_VERSION=1.3.0
 
 ARG QEMU_VERSION=HEAD
-ARG QEMU_REPO=https://github.com/Loongson-Cloud-Community/binfmt/releases/download/deploy%2Fv8.0.4-33/qemu-7.2.6-anolis.tar.gz
+ARG QEMU_REPO=https://github.com/qemu/qemu
 
 # xx is a helper for cross-compilation
-FROM lcr.loongnix.cn/library/tonistiigi/xx:latest AS xx
+FROM lcr.loongnix.cn/tonistiigi/xx:latest AS xx
 
 FROM lcr.loongnix.cn/library/debian:sid AS src
 RUN apt update && apt install -y git patch
@@ -14,14 +14,13 @@ RUN apt update && apt install -y git patch
 WORKDIR /src
 ARG QEMU_VERSION
 ARG QEMU_REPO
-#RUN git clone $QEMU_REPO && cd qemu && git checkout $QEMU_VERSION
 COPY patches patches
 # QEMU_PATCHES defines additional patches to apply before compilation
-COPY qemu qemu
-#RUN wget $QEMU_REPO && tar -zxvf qemu-7.2.6-anolis.tar.gz && mv qemu-7.2.6 qemu
+#COPY qemu qemu
+RUN git clone -b v8.0.5 --depth 1 $QEMU_REPO
 ARG QEMU_PATCHES=cpu-max-arm
 # QEMU_PATCHES_ALL defines all patches to apply before compilation
-ARG QEMU_PATCHES_ALL=${QEMU_PATCHES},alpine-patches,anolis
+ARG QEMU_PATCHES_ALL=${QEMU_PATCHES},alpine-patches
 ARG QEMU_PRESERVE_ARGV0
 COPY start.sh .
 RUN chmod +x start.sh
@@ -30,10 +29,6 @@ RUN ./start.sh && QEMU_PATCHES_ALL="${QEMU_PATCHES_ALL},preserve-argv0" \
 COPY next.sh .
 #RUN chmod +x next.sh &&./next.sh && rm next.sh && cd qemu 
 RUN chmod +x next.sh &&./next.sh && rm next.sh && cd qemu && scripts/git-submodule.sh update ui/keycodemapdb tests/fp/berkeley-testfloat-3 tests/fp/berkeley-softfloat-3 dtc slirp 
-#    mkdir -p /usr/include/standard-headers && \
-#    cp -r ./include/standard-headers/* /usr/include/standard-headers && \
-#    mkdir -p /usr/include/linux-headers && \
- #   cp -r ./linux-headers/* /usr/include/linux-headers
 
 
 #FROM lcr.loongnix.cn/library/debian:sid AS base
@@ -61,7 +56,7 @@ ENV AR=llvm-ar STRIP=llvm-strip
 RUN cp -r /src/qemu/include/standard-headers /usr/include/  && \
     cp -r /src/qemu/linux-headers /usr/include/
 ADD scripts/configure_qemu.sh.bak configure_qemu.sh
-RUN chmod +x configure_qemu.sh && apt update && apt install -y clang gcc 
+RUN chmod +x configure_qemu.sh && apt update && apt install -y clang gcc bison flex 
 #RUN --mount=target=.,from=src,src=/src/qemu,rw --mount=target=./install-scripts,src=scripts \
 #TARGETPLATFORM=${TARGETPLATFORM} ./configure && \
 RUN TARGETPLATFORM=${TARGETPLATFORM} ./configure_qemu.sh && \
@@ -103,7 +98,7 @@ COPY --from=src usr/bin/${BINARY_PREFIX}qemu-* /
 FROM scratch AS archive
 COPY --from=build-archive /archive/* /
 
-FROM lcr.loongnix.cn/library/tonistiigi/bats-assert:latest AS assert
+FROM lcr.loongnix.cn/tonistiigi/bats-assert:latest AS assert
 
 FROM  lcr.loongnix.cn/library/alpine:v3.18-base AS alpine-crossarch
 
