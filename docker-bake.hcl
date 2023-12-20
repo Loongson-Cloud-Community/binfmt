@@ -1,5 +1,5 @@
 variable "REPO" {
-  default = "tonistiigi/binfmt"
+  default = "lcr.loongnix.cn/tonistiigi/binfmt-x86"
 }
 variable "QEMU_REPO" {
   default = "https://github.com/qemu/qemu"
@@ -48,7 +48,7 @@ target "mainline" {
     QEMU_PRESERVE_ARGV0 = "1"
   }
   cache-to = ["type=inline"]
-  cache-from = ["${REPO}:master"]
+  cache-from = ["${REPO}:latest"]
 }
 
 target "mainline-all" {
