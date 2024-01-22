@@ -1,17 +1,13 @@
 variable "TAG" {
-  default = "latest"
+  default = "loongarch64_other_arch"
 }
 
 group "default" {
-  targets = ["hello"]
+  targets = ["default"]
 }
 
-target "hello" {
-  #args={
-  #      HTTP_PROXY= "http://10.130.0.20:7890",
-  #      HTTPS_PROXY= "http://10.130.0.20:7890",
-  #}
+target "default" {
   dockerfile = "Dockerfile"
-  #tags = ["binfmt:${TAG}"]
-  tags = ["lcr.loongnix.cn/library/tonistiigi/binfmt:${TAG}"]
+  tags = ["cr.loongnix.cn/tonistiigi/binfmt:${TAG}"]
+  #tags = ["qemu:bin"]
 } 

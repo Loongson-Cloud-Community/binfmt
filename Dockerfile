@@ -2,43 +2,34 @@ ARG GO_VERSION=1.21
 ARG ALPINE_VERSION=3.18
 ARG XX_VERSION=1.3.0
 
-ARG QEMU_VERSION=HEAD
-ARG QEMU_REPO=https://github.com/Loongson-Cloud-Community/binfmt/releases/download/deploy%2Fv8.0.4-33/qemu-7.2.6-anolis.tar.gz
+ARG QEMU_VERSION=tcg-old
+ARG QEMU_REPO=https://github.com/loongson/qemu
 
 # xx is a helper for cross-compilation
-FROM lcr.loongnix.cn/library/tonistiigi/xx:latest AS xx
+FROM cr.loongnix.cn/tonistiigi/xx:1.3.0 AS xx
 
-FROM lcr.loongnix.cn/library/debian:sid AS src
+FROM cr.loongnix.cn/library/debian:buster AS src
 RUN apt update && apt install -y git patch
 
 WORKDIR /src
 ARG QEMU_VERSION
 ARG QEMU_REPO
-#RUN git clone $QEMU_REPO && cd qemu && git checkout $QEMU_VERSION
 COPY patches patches
 # QEMU_PATCHES defines additional patches to apply before compilation
-COPY qemu qemu
-#RUN wget $QEMU_REPO && tar -zxvf qemu-7.2.6-anolis.tar.gz && mv qemu-7.2.6 qemu
+#COPY qemu qemu
+RUN git clone -b $QEMU_VERSION --depth 1 $QEMU_REPO
 ARG QEMU_PATCHES=cpu-max-arm
 # QEMU_PATCHES_ALL defines all patches to apply before compilation
-ARG QEMU_PATCHES_ALL=${QEMU_PATCHES},alpine-patches,anolis
-ARG QEMU_PRESERVE_ARGV0
-COPY start.sh .
-RUN chmod +x start.sh
-RUN ./start.sh && QEMU_PATCHES_ALL="${QEMU_PATCHES_ALL},preserve-argv0" \
-      && rm start.sh && cd qemu
+RUN  cd qemu
 COPY next.sh .
-#RUN chmod +x next.sh &&./next.sh && rm next.sh && cd qemu 
-RUN chmod +x next.sh &&./next.sh && rm next.sh && cd qemu && scripts/git-submodule.sh update ui/keycodemapdb tests/fp/berkeley-testfloat-3 tests/fp/berkeley-softfloat-3 dtc slirp 
-#    mkdir -p /usr/include/standard-headers && \
-#    cp -r ./include/standard-headers/* /usr/include/standard-headers && \
-#    mkdir -p /usr/include/linux-headers && \
- #   cp -r ./linux-headers/* /usr/include/linux-headers
+RUN chmod +x next.sh &&./next.sh && rm next.sh 
+RUN https_proxy=http://10.130.0.20:7890 cd qemu && scripts/git-submodule.sh update ui/keycodemapdb tests/fp/berkeley-testfloat-3 tests/fp/berkeley-softfloat-3 dtc slirp 
 
 
 #FROM lcr.loongnix.cn/library/debian:sid AS base
 #RUN apk add --no-cache git clang python3 llvm make ninja pkgconfig  pkgconf glib-dev gcc musl-dev perl bash
-RUN apt update && apt install -y git clang python3 llvm make ninja-build pkg-config pkgconf libglib2.0-dev gcc libc6-dev perl bash
+RUN apt update && apt install -y git clang python3 llvm make ninja-build pkgconf libglib2.0-dev gcc libc6-dev perl bash
+RUN apt install -y pkg-config
 COPY --from=xx / /
 ENV PATH=/src/qemu/install-scripts:$PATH
 #ENV PATH=/qemu/install-scripts:$PATH
@@ -47,7 +38,7 @@ WORKDIR /src/qemu
 
 ARG TARGETPLATFORM
 #RUN apk add --no-cache binutils musl-dev gcc glib-dev glib-static linux-headers zlib-static
-RUN apt update && apt install -y clang lld-16 binutils gcc libglib2.0-dev linux-headers-6.5.0-3-common zlib1g-dev && ln -s /usr/bin/lld-16 /usr/bin/lld
+RUN apt update && apt install -y clang lld binutils gcc libglib2.0-dev zlib1g-dev
 RUN set -e; \
   [ "$(xx-info arch)" = "ppc64le" ] && XX_CC_PREFER_LINKER=ld xx-clang --setup-target-triple; \
   [ "$(xx-info arch)" = "386" ] && XX_CC_PREFER_LINKER=ld xx-clang --setup-target-triple; \
@@ -61,7 +52,7 @@ ENV AR=llvm-ar STRIP=llvm-strip
 RUN cp -r /src/qemu/include/standard-headers /usr/include/  && \
     cp -r /src/qemu/linux-headers /usr/include/
 ADD scripts/configure_qemu.sh.bak configure_qemu.sh
-RUN chmod +x configure_qemu.sh && apt update && apt install -y clang gcc 
+RUN chmod +x configure_qemu.sh && apt update && apt install -y clang gcc bison flex 
 #RUN --mount=target=.,from=src,src=/src/qemu,rw --mount=target=./install-scripts,src=scripts \
 #TARGETPLATFORM=${TARGETPLATFORM} ./configure && \
 RUN TARGETPLATFORM=${TARGETPLATFORM} ./configure_qemu.sh && \
@@ -74,7 +65,7 @@ RUN rm -rf /usr/bin/qemu-loongarch64
 ARG BINARY_PREFIX
 RUN cd /usr/bin; [ -z "$BINARY_PREFIX" ] || for f in $(ls qemu-*); do ln -s $f $BINARY_PREFIX$f; done
 
-FROM lcr.loongnix.cn/library/golang:1.21-alpine AS binfmt
+FROM cr.loongnix.cn/library/golang:1.20-alpine AS binfmt
 COPY --from=xx / /
 ENV CGO_ENABLED=0
 ARG TARGETPLATFORM
@@ -103,9 +94,9 @@ COPY --from=src usr/bin/${BINARY_PREFIX}qemu-* /
 FROM scratch AS archive
 COPY --from=build-archive /archive/* /
 
-FROM lcr.loongnix.cn/library/tonistiigi/bats-assert:latest AS assert
+FROM cr.loongnix.cn/tonistiigi/bats-assert:latest AS assert
 
-FROM  lcr.loongnix.cn/library/alpine:v3.18-base AS alpine-crossarch
+FROM  cr.loongnix.cn/library/alpine:3.11 AS alpine-crossarch
 
 RUN apk add --no-cache bash
 
@@ -115,7 +106,7 @@ COPY crossarch.sh .
 RUN chmod +x crossarch.sh && bash crossarch.sh
 
 # buildkit-test runs test suite for buildkit embedded QEMU
-FROM lcr.loongnix.cn/library/golang:1.21-alpine AS buildkit-test
+FROM cr.loongnix.cn/library/golang:1.20-alpine AS buildkit-test
 RUN apk add --no-cache bash bats
 WORKDIR /work
 COPY --from=assert . .
@@ -133,5 +124,5 @@ ARG QEMU_PRESERVE_ARGV0
 ENV QEMU_PRESERVE_ARGV0=${QEMU_PRESERVE_ARGV0}
 #CMD [ "/bin/bash" ]
 ENTRYPOINT [ "/usr/bin/binfmt" ]
-VOLUME /tmp
+#VOLUME /tmp
 
