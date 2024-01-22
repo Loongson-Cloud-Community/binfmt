@@ -1,11 +1,11 @@
 variable "REPO" {
-  default = "tonistiigi/binfmt"
+  default = "cr.loongnix.cn/tonistiigi/binfmt"
 }
 variable "QEMU_REPO" {
-  default = "https://github.com/qemu/qemu"
+  default = "https://github.com/loongson/qemu"
 }
 variable "QEMU_VERSION" {
-  default = "v8.0.4"
+  default = "tcg-old"
 }
 variable "QEMU_PATCHES" {
   default = "cpu-max-arm"

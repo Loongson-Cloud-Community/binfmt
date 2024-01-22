@@ -4,8 +4,8 @@ ARG GO_VERSION=1.21
 ARG ALPINE_VERSION=3.18
 ARG XX_VERSION=1.3.0
 
-ARG QEMU_VERSION=HEAD
-ARG QEMU_REPO=https://github.com/qemu/qemu
+ARG QEMU_VERSION=tcg-old
+ARG QEMU_REPO=https://github.com/loongson/qemu
 
 # xx is a helper for cross-compilation
 FROM --platform=$BUILDPLATFORM tonistiigi/xx:${XX_VERSION} AS xx
@@ -16,42 +16,43 @@ RUN apk add --no-cache git patch
 WORKDIR /src
 ARG QEMU_VERSION
 ARG QEMU_REPO
-RUN git clone $QEMU_REPO && cd qemu && git checkout $QEMU_VERSION
+RUN git clone -b $QEMU_VERSION $QEMU_REPO && cd qemu
+#COPY qemu-6.2.0 qemu
 COPY patches patches
 # QEMU_PATCHES defines additional patches to apply before compilation
 ARG QEMU_PATCHES=cpu-max-arm
 # QEMU_PATCHES_ALL defines all patches to apply before compilation
-ARG QEMU_PATCHES_ALL=${QEMU_PATCHES},alpine-patches
+ARG QEMU_PATCHES_ALL=alpine-patches
 ARG QEMU_PRESERVE_ARGV0
 RUN <<eof
   set -ex
-  if [ "${QEMU_PATCHES_ALL#*alpine-patches}" != "${QEMU_PATCHES_ALL}" ]; then
-    ver="$(cat qemu/VERSION)"
-    for l in $(cat patches/aports.config); do
-      pver=$(echo $l | cut -d, -f1)
-      if [ "${ver%.*}" = "${pver%.*}" ]; then
-        commit=$(echo $l | cut -d, -f2)
-        rmlist=$(echo $l | cut -d, -f3)
-        break
-      fi
-    done
-    mkdir -p aports && cd aports && git init
-    git fetch --depth 1 https://github.com/alpinelinux/aports.git "$commit"
-    git checkout FETCH_HEAD
-    mkdir -p ../patches/alpine-patches
-    for f in $(echo $rmlist | tr ";" "\n"); do
-      rm community/qemu/*${f}*.patch || true
-    done
-    cp -a community/qemu/*.patch ../patches/alpine-patches/
-    cd - && rm -rf aports
-  fi
-  if [ -n "${QEMU_PRESERVE_ARGV0}" ]; then
-    QEMU_PATCHES_ALL="${QEMU_PATCHES_ALL},preserve-argv0"
-  fi
+#  if [ "${QEMU_PATCHES_ALL#*alpine-patches}" != "${QEMU_PATCHES_ALL}" ]; then
+#    ver="$(cat qemu/VERSION)"
+#    for l in $(cat patches/aports.config); do
+#      pver=$(echo $l | cut -d, -f1)
+#      if [ "${ver%.*}" = "${pver%.*}" ]; then
+#        commit=$(echo $l | cut -d, -f2)
+#        rmlist=$(echo $l | cut -d, -f3)
+#        break
+#      fi
+#    done
+#    mkdir -p aports && cd aports && git init
+#    git fetch --depth 1 https://github.com/alpinelinux/aports.git "$commit"
+#    git checkout FETCH_HEAD
+#    mkdir -p ../patches/alpine-patches
+#    for f in $(echo $rmlist | tr ";" "\n"); do
+#      rm community/qemu/*${f}*.patch || true
+#    done
+#    cp -a community/qemu/*.patch ../patches/alpine-patches/
+#    cd - && rm -rf aports
+#  fi
+#  if [ -n "${QEMU_PRESERVE_ARGV0}" ]; then
+#    QEMU_PATCHES_ALL="${QEMU_PATCHES_ALL},preserve-argv0"
+#  fi
   cd qemu
-  for p in $(echo $QEMU_PATCHES_ALL | tr ',' '\n'); do
-    for f in  ../patches/$p/*.patch; do echo "apply $f"; patch -p1 < $f; done
-  done
+#  for p in $(echo $QEMU_PATCHES_ALL | tr ',' '\n'); do
+#    for f in  ../patches/$p/*.patch; do echo "apply $f"; patch -p1 < $f; done
+#  done
   scripts/git-submodule.sh update ui/keycodemapdb tests/fp/berkeley-testfloat-3 tests/fp/berkeley-softfloat-3 dtc slirp
 eof
 

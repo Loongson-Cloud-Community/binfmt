@@ -35,7 +35,7 @@ if [ -z "$QEMU_TARGETS" ]; then
     QEMU_TARGETS="$QEMU_TARGETS mips64-linux-user"
   fi
   if [ "$arch" != "loong64" ] ; then
-    QEMU_TARGETS="$QEMU_TARGETS loong64-linux-user"
+    QEMU_TARGETS="$QEMU_TARGETS loongarch64-linux-user"
   fi
 fi
 
